@@ -95,5 +95,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Show file structure (debug)
+        run: find . -type f | sort
+
       - name: Check for upcoming cheap electricity window
         run: python main.py --mode check
