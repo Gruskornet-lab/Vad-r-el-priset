@@ -87,14 +87,20 @@ def send_evening_summary(topic: str, cheapest_groups: list[dict], date_label: st
     Send the evening summary notification listing tomorrow's cheapest hours.
  
     Args:
-        topic:          ntfy topic name
+        topic:           ntfy topic name
         cheapest_groups: Grouped cheap hours from price_analyzer.py
-        date_label:     Human-readable date label, default "imorgon"
+        date_label:      Human-readable date label, default "imorgon"
  
     Returns:
         True if sent successfully
     """
-    lines = [f"Passa på att köra diskmaskinen eller laddaren under:\n"]
+    from datetime import datetime, timedelta
+ 
+    # Calculate tomorrow's date for display
+    tomorrow = datetime.now() + timedelta(days=1)
+    date_str = tomorrow.strftime("%d/%m/%Y")
+ 
+    lines = [f"Passa på att köra diskmaskinen eller laddaren under ({date_str}):\n"]
     for group in cheapest_groups:
         time_range = format_time_range(group)
         price = format_price(group["avg_price"])
@@ -122,11 +128,14 @@ def send_upcoming_alert(topic: str, group: dict) -> bool:
     Returns:
         True if sent successfully
     """
+    from datetime import datetime
+ 
     time_range = format_time_range(group)
     price = format_price(group["avg_price"])
+    date_str = datetime.now().strftime("%d/%m/%Y")
  
     message = (
-        f"Kl. {time_range} kostar elen {price}\n"
+        f"Kl. {time_range} ({date_str}) kostar elen {price}\n"
         f"Passa på att starta diskmaskinen! 🫧"
     )
  
