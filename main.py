@@ -22,9 +22,6 @@ import os
 import sys
 from datetime import datetime, timedelta
 
-# Add src directory to path when running locally
-sys.path.insert(0, os.path.dirname(__file__))
-
 from price_fetcher import fetch_tomorrow_prices, fetch_today_prices
 from price_analyzer import get_cheapest_hours, group_consecutive_hours
 from notifier import send_evening_summary, send_upcoming_alert
