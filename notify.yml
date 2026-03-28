@@ -66,7 +66,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Send evening summary
-        run: python src/main.py --mode evening
+        run: python main.py --mode evening
 
   # ── Hourly Check ────────────────────────────────────────────────────────────
   hourly-check:
@@ -95,5 +95,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Show file structure (debug)
+        run: find . -type f | sort
+
       - name: Check for upcoming cheap electricity window
-        run: python src/main.py --mode check
+        run: python main.py --mode check
