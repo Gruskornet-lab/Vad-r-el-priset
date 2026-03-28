@@ -15,6 +15,7 @@ How it works:
 
 import os
 import requests
+from price_analyzer import format_time_range, format_price
 
 
 # ntfy.sh public server — no account or API key needed
@@ -78,8 +79,6 @@ def send_evening_summary(topic: str, cheapest_groups: list[dict], date_label: st
     Returns:
         True if sent successfully
     """
-    from price_analyzer import format_time_range, format_price
-
     lines = [f"Passa på att köra diskmaskinen eller laddaren under:\n"]
     for group in cheapest_groups:
         time_range = format_time_range(group)
@@ -108,8 +107,6 @@ def send_upcoming_alert(topic: str, group: dict) -> bool:
     Returns:
         True if sent successfully
     """
-    from price_analyzer import format_time_range, format_price
-
     time_range = format_time_range(group)
     price = format_price(group["avg_price"])
 
