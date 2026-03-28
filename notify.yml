@@ -1,0 +1,99 @@
+# .github/workflows/notify.yml
+#
+# GitHub Actions workflow for the Electricity Price Notifier
+#
+# Two scheduled jobs:
+#   1. evening-summary — runs at 21:00 CET every day
+#      Sends a summary of tomorrow's 3 cheapest electricity windows
+#
+#   2. hourly-check — runs every hour at xx:30 CET
+#      Sends a 30-minute warning if a cheap window is about to start
+#
+# GitHub Actions uses UTC. Sweden is CET (UTC+1) or CEST (UTC+2) in summer.
+# To keep it simple we use UTC+1 (winter time) as base:
+#   - 21:00 CET = 20:00 UTC
+#   - xx:30 CET = (xx-1):30 UTC  →  every hour at :30 UTC
+
+name: Electricity Price Notifier
+
+on:
+  schedule:
+    # Evening summary — 21:00 CET (20:00 UTC)
+    - cron: "0 20 * * *"
+
+    # Hourly check — every hour at :30 UTC (= :30 CET winter / :30 CEST summer)
+    # This covers all 24 half-hours to catch every possible cheap window
+    - cron: "30 * * * *"
+
+  # Allow manual trigger from GitHub Actions tab (useful for testing)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Which mode to run"
+        required: true
+        default: "check"
+        type: choice
+        options:
+          - evening
+          - check
+
+jobs:
+  # ── Evening Summary ─────────────────────────────────────────────────────────
+  evening-summary:
+    name: Send Evening Summary
+    runs-on: ubuntu-latest
+
+    # Only run this job on the 21:00 schedule (cron at minute 0)
+    # and on manual trigger with mode=evening
+    if: |
+      (github.event_name == 'schedule' && github.event.schedule == '0 20 * * *') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'evening')
+
+    env:
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      ZONE: SE3
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Send evening summary
+        run: python src/main.py --mode evening
+
+  # ── Hourly Check ────────────────────────────────────────────────────────────
+  hourly-check:
+    name: Check for Upcoming Cheap Window
+    runs-on: ubuntu-latest
+
+    # Only run this job on the :30 schedule (cron at minute 30)
+    # and on manual trigger with mode=check
+    if: |
+      (github.event_name == 'schedule' && github.event.schedule == '30 * * * *') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'check')
+
+    env:
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      ZONE: SE3
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check for upcoming cheap electricity window
+        run: python src/main.py --mode check
