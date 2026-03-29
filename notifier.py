@@ -94,10 +94,11 @@ def send_evening_summary(topic: str, cheapest_groups: list[dict], date_label: st
     Returns:
         True if sent successfully
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
  
     # Calculate tomorrow's date for display
-    tomorrow = datetime.now() + timedelta(days=1)
+    cet = timezone(timedelta(hours=1))
+    tomorrow = datetime.now(tz=cet) + timedelta(days=1)
     date_str = tomorrow.strftime("%d/%m/%Y")
  
     lines = [f"Passa på att köra diskmaskinen eller laddaren under ({date_str}):\n"]
@@ -128,11 +129,12 @@ def send_upcoming_alert(topic: str, group: dict) -> bool:
     Returns:
         True if sent successfully
     """
-    from datetime import datetime
+    from datetime import datetime, timedelta, timezone
  
     time_range = format_time_range(group)
     price = format_price(group["avg_price"])
-    date_str = datetime.now().strftime("%d/%m/%Y")
+    cet = timezone(timedelta(hours=1))
+    date_str = datetime.now(tz=cet).strftime("%d/%m/%Y")
  
     message = (
         f"Kl. {time_range} ({date_str}) kostar elen {price}\n"
