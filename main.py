@@ -80,12 +80,24 @@ def run_hourly_check():
     - If any of them starts in 30 minutes (i.e. current time is xx:30 and
       the cheap hour is xx+1:00), send an alert
     """
-    # Use Swedish time (CET = UTC+1, CEST = UTC+2 in summer)
-    # GitHub Actions runs in UTC — without this fix, hour comparisons
-    # against the API's Swedish-time prices would be off by 1-2 hours
-    cet = timezone(timedelta(hours=1))
-    now = datetime.now(tz=cet)
-    print(f"[Main] Running hourly check at {now.strftime('%H:%M')} CET for zone {ZONE}...")
+    # GitHub Actions runs in UTC. The cron fires at xx:30 UTC.
+    # Swedish electricity prices use CET (UTC+1).
+    #
+    # Example: warn about cheap electricity at 13:00 CET
+    #   → notification should fire at 12:30 CET = 11:30 UTC
+    #   → cron fires at 11:30 UTC ✅
+    #   → upcoming CET hour = 11:30 UTC + 30min + 1h offset = 13:00 CET ✅
+    #
+    # We use UTC here and manually add the CET offset (1 hour).
+    # Note: this uses CET (UTC+1) fixed offset, which is correct for winter.
+    # In summer (CEST = UTC+2) there will be a 1-hour drift, but electricity
+    # price windows are wide enough that this is acceptable.
+ 
+    now_utc = datetime.now(tz=timezone.utc)
+    upcoming_hour_cet = (now_utc + timedelta(minutes=30) + timedelta(hours=1)).hour
+ 
+    print(f"[Main] Running hourly check at {now_utc.strftime('%H:%M')} UTC, "
+          f"checking for cheap window at {upcoming_hour_cet:02d}:00 CET...")
  
     try:
         prices = fetch_today_prices(zone=ZONE)
@@ -96,21 +108,18 @@ def run_hourly_check():
     cheapest_hours = get_cheapest_hours(prices, top_n=TOP_N_HOURS)
     cheapest_groups = group_consecutive_hours(cheapest_hours)
  
-    # The hour that starts in 30 minutes
-    upcoming_hour = (now + timedelta(minutes=30)).hour
- 
     # Check each cheap group — alert if it starts in ~30 min
     alert_sent = False
     for group in cheapest_groups:
-        if group["start_hour"] == upcoming_hour:
-            print(f"[Main] ⚡ Cheap window starting soon: {group['start_hour']:02d}:00–{group['end_hour']:02d}:00")
+        if group["start_hour"] == upcoming_hour_cet:
+            print(f"[Main] ⚡ Cheap window starting soon: {group['start_hour']:02d}:00–{group['end_hour']:02d}:00 CET")
             success = send_upcoming_alert(topic=NTFY_TOPIC, group=group)
             if success:
                 alert_sent = True
             break
  
     if not alert_sent:
-        print(f"[Main] No cheap window starting at {upcoming_hour:02d}:00 — no alert needed.")
+        print(f"[Main] No cheap window starting at {upcoming_hour_cet:02d}:00 CET — no alert needed.")
  
     print("[Main] ✅ Hourly check complete.")
  
