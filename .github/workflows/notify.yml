@@ -6,25 +6,37 @@
 #   1. evening-summary — runs at 21:00 CET every day
 #      Sends a summary of tomorrow's 3 cheapest electricity windows
 #
-#   2. hourly-check — runs every hour at xx:30 CET
+#   2. hourly-check — runs every hour at :30 CET
 #      Sends a 30-minute warning if a cheap window is about to start
 #
-# GitHub Actions uses UTC. Sweden is CET (UTC+1) or CEST (UTC+2) in summer.
-# To keep it simple we use UTC+1 (winter time) as base:
-#   - 21:00 CET = 20:00 UTC
-#   - xx:30 CET = (xx-1):30 UTC  →  every hour at :30 UTC
-
+# GitHub Actions uses UTC. Sweden is CET (UTC+1) in winter, CEST (UTC+2) in summer.
+#
+# Time conversion for hourly-check:
+#   We want to run at xx:30 CET = (xx-1):30 UTC
+#   Example: warn about 13:00 CET → run at 12:30 CET = 11:30 UTC
+#   So cron runs at :30 UTC, and the code checks which CET hour starts in 30 min.
+#   BUT: :30 UTC = 1:30 CET (winter), so we need the code to work in UTC
+#   and compare against API hours which are in CET.
+#
+# Simplest correct solution:
+#   - Run cron at :30 UTC  
+#   - In code: upcoming_hour = (now_utc + 30min + 1h_CET_offset).hour
+#   - This correctly maps :30 UTC → next CET hour
+#
+# Evening summary: 21:00 CET = 20:00 UTC (winter) / 19:00 UTC (summer)
+# We use 20:00 UTC which works correctly in winter (CET).
+ 
 name: Electricity Price Notifier
-
+ 
 on:
   schedule:
-    # Evening summary — 21:00 CET (20:00 UTC)
+    # Evening summary — 21:00 CET (20:00 UTC winter time)
     - cron: "0 20 * * *"
-
-    # Hourly check — every hour at :30 UTC (= :30 CET winter / :30 CEST summer)
-    # This covers all 24 half-hours to catch every possible cheap window
+ 
+    # Hourly check — at :30 UTC every hour
+    # 12:30 CET = 11:30 UTC → warns about 13:00 CET ✅
     - cron: "30 * * * *"
-
+ 
   # Allow manual trigger from GitHub Actions tab (useful for testing)
   workflow_dispatch:
     inputs:
@@ -36,67 +48,68 @@ on:
         options:
           - evening
           - check
-
+ 
 jobs:
   # ── Evening Summary ─────────────────────────────────────────────────────────
   evening-summary:
     name: Send Evening Summary
     runs-on: ubuntu-latest
-
+ 
     # Only run this job on the 21:00 schedule (cron at minute 0)
     # and on manual trigger with mode=evening
     if: |
       (github.event_name == 'schedule' && github.event.schedule == '0 20 * * *') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'evening')
-
+ 
     env:
       NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
       ZONE: SE3
-
+ 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
+ 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
+ 
       - name: Install dependencies
         run: pip install -r requirements.txt
-
+ 
       - name: Send evening summary
         run: python main.py --mode evening
-
+ 
   # ── Hourly Check ────────────────────────────────────────────────────────────
   hourly-check:
     name: Check for Upcoming Cheap Window
     runs-on: ubuntu-latest
-
+ 
     # Only run this job on the :30 schedule (cron at minute 30)
     # and on manual trigger with mode=check
     if: |
       (github.event_name == 'schedule' && github.event.schedule == '30 * * * *') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'check')
-
+ 
     env:
       NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
       ZONE: SE3
-
+ 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
+ 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
+ 
       - name: Install dependencies
         run: pip install -r requirements.txt
-
+ 
       - name: Show file structure (debug)
         run: find . -type f | sort
-
+ 
       - name: Check for upcoming cheap electricity window
         run: python main.py --mode check
+ 
