@@ -3,41 +3,35 @@
 # GitHub Actions workflow for the Electricity Price Notifier
 #
 # Two scheduled jobs:
-#   1. evening-summary — runs at 21:00 CET every day
-#      Sends a summary of tomorrow's 3 cheapest electricity windows
 #
-#   2. hourly-check — runs every hour at :30 CET
-#      Sends a 30-minute warning if a cheap window is about to start
+#   1. evening-summary — runs at 21:00 CET (20:00 UTC) every day
+#      - Fetches tomorrow's electricity prices
+#      - Saves cheapest hours to schedule.json
+#      - Commits schedule.json to the repo
+#      - Sends evening summary push notification
 #
-# GitHub Actions uses UTC. Sweden is CET (UTC+1) in winter, CEST (UTC+2) in summer.
+#   2. hourly-check — runs every hour at :30 UTC (= :30 CET winter)
+#      - Reads schedule.json
+#      - Sends 30-minute warning if a cheap window starts in 30 min
+#      - No price calculations — just reads the saved schedule
 #
-# Time conversion for hourly-check:
-#   We want to run at xx:30 CET = (xx-1):30 UTC
-#   Example: warn about 13:00 CET → run at 12:30 CET = 11:30 UTC
-#   So cron runs at :30 UTC, and the code checks which CET hour starts in 30 min.
-#   BUT: :30 UTC = 1:30 CET (winter), so we need the code to work in UTC
-#   and compare against API hours which are in CET.
-#
-# Simplest correct solution:
-#   - Run cron at :30 UTC  
-#   - In code: upcoming_hour = (now_utc + 30min + 1h_CET_offset).hour
-#   - This correctly maps :30 UTC → next CET hour
-#
-# Evening summary: 21:00 CET = 20:00 UTC (winter) / 19:00 UTC (summer)
-# We use 20:00 UTC which works correctly in winter (CET).
+# Why commit schedule.json?
+#   GitHub Actions jobs are isolated — they each get a fresh copy of the repo.
+#   The only way for evening-summary to pass data to a later hourly-check job
+#   is to commit it to the repo. The hourly-check then checks out the repo
+#   and reads the file directly.
  
 name: Electricity Price Notifier
  
 on:
   schedule:
-    # Evening summary — 21:00 CET (20:00 UTC winter time)
+    # Evening summary — 21:00 CET = 20:00 UTC
     - cron: "0 20 * * *"
  
-    # Hourly check — at :30 UTC every hour
-    # 12:30 CET = 11:30 UTC → warns about 13:00 CET ✅
+    # Hourly check — every hour at :30 UTC (= :30 CET in winter)
+    # Cron runs at 11:30 UTC → code reads now_cet (12:30) + 30 min = 13:00 CET
     - cron: "30 * * * *"
  
-  # Allow manual trigger from GitHub Actions tab (useful for testing)
   workflow_dispatch:
     inputs:
       mode:
@@ -50,16 +44,17 @@ on:
           - check
  
 jobs:
-  # ── Evening Summary ─────────────────────────────────────────────────────────
+  # ── Evening Summary ──────────────────────────────────────────────────────────
   evening-summary:
     name: Send Evening Summary
     runs-on: ubuntu-latest
  
-    # Only run this job on the 21:00 schedule (cron at minute 0)
-    # and on manual trigger with mode=evening
     if: |
       (github.event_name == 'schedule' && github.event.schedule == '0 20 * * *') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'evening')
+ 
+    permissions:
+      contents: write  # Required to commit schedule.json back to the repo
  
     env:
       NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
@@ -77,16 +72,22 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
  
-      - name: Send evening summary
+      - name: Run evening summary and save schedule
         run: python main.py --mode evening
  
-  # ── Hourly Check ────────────────────────────────────────────────────────────
+      - name: Commit schedule.json to repo
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add schedule.json
+          git diff --cached --quiet || git commit -m "Update schedule.json for $(date '+%Y-%m-%d')"
+          git push
+ 
+  # ── Hourly Check ─────────────────────────────────────────────────────────────
   hourly-check:
     name: Check for Upcoming Cheap Window
     runs-on: ubuntu-latest
  
-    # Only run this job on the :30 schedule (cron at minute 30)
-    # and on manual trigger with mode=check
     if: |
       (github.event_name == 'schedule' && github.event.schedule == '30 * * * *') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'check')
@@ -107,9 +108,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
  
-      - name: Show file structure (debug)
-        run: find . -type f | sort
- 
-      - name: Check for upcoming cheap electricity window
+      - name: Check schedule and send alert if needed
         run: python main.py --mode check
  
