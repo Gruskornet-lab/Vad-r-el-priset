@@ -220,4 +220,4 @@ if __name__ == "__main__":
     if args.mode == "evening":
         run_evening_summary()
     elif args.mode == "check":
-        run_hourly
+        run_hourly_check()
